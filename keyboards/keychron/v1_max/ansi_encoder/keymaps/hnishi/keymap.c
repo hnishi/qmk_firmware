@@ -16,6 +16,7 @@
 
 #include QMK_KEYBOARD_H
 #include "keychron_common.h"
+#include "twpair_on_jis.h"
 
 enum layers {
     MAC_BASE,
@@ -70,6 +71,10 @@ const uint16_t PROGMEM encoder_map[][NUM_ENCODERS][2] = {
 
 bool process_record_user(uint16_t keycode, keyrecord_t *record) {
     if (!process_record_keychron_common(keycode, record)) {
+        return false;
+    }
+    // US配列からJIS配列への変換を試みる
+    if (!twpair_on_jis(keycode, record)) {
         return false;
     }
     return true;
