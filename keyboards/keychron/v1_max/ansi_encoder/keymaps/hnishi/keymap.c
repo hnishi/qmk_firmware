@@ -18,6 +18,38 @@
 #include "keychron_common.h"
 #include "twpair_on_jis.h"
 
+// EEPROMのアドレス定義
+#define JIS_MODE_MAGIC 0x1234 // 設定が保存されているかの判定用
+#define EEPROM_JIS_MODE_ADDR 10
+#define EEPROM_JIS_MAGIC_ADDR 8
+
+static bool is_jis_mode = false; // デフォルトはUSモード
+
+// JIS/USモード切り替えのための初期化
+void keyboard_post_init_user(void) {
+    // EEPROM読み込み
+    uint16_t magic = eeprom_read_word((uint16_t *)EEPROM_JIS_MAGIC_ADDR);
+    if (magic == JIS_MODE_MAGIC) {
+        is_jis_mode = eeprom_read_byte((uint8_t *)EEPROM_JIS_MODE_ADDR);
+    } else {
+        // 初期値を保存
+        eeprom_write_word((uint16_t *)EEPROM_JIS_MAGIC_ADDR, JIS_MODE_MAGIC);
+        eeprom_write_byte((uint8_t *)EEPROM_JIS_MODE_ADDR, is_jis_mode);
+    }
+}
+
+// JIS/USモードの切り替え
+static void toggle_jis_mode(void) {
+    is_jis_mode = !is_jis_mode;
+    eeprom_write_byte((uint8_t *)EEPROM_JIS_MODE_ADDR, is_jis_mode);
+    // LEDパターンで状態を表示
+    if (is_jis_mode) {
+        rgb_matrix_mode_noeeprom(RGB_MATRIX_RAINDROPS); // JISモードはレインドロップパターン
+    } else {
+        rgb_matrix_mode_noeeprom(RGB_MATRIX_CYCLE_ALL); // USモードはレインボーパターン
+    }
+}
+
 enum layers {
     MAC_BASE,
     MAC_FN,
@@ -73,9 +105,25 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
     if (!process_record_keychron_common(keycode, record)) {
         return false;
     }
-    // US配列からJIS配列への変換を試みる
-    if (!twpair_on_jis(keycode, record)) {
+
+    static bool    fn_pressed    = false;
+    static uint8_t current_layer = 0;
+
+    current_layer = get_highest_layer(layer_state);
+
+    // Fnキーの状態を監視（MAC_FNまたはWIN_FNレイヤーがアクティブかどうかで判断）
+    fn_pressed = (current_layer == MAC_FN || current_layer == WIN_FN);
+
+    // Fn + Escで切り替え
+    if (keycode == KC_ESC && fn_pressed && record->event.pressed) {
+        toggle_jis_mode();
         return false;
     }
+
+    // JISモードの時のみ変換を実行
+    if (is_jis_mode && !twpair_on_jis(keycode, record)) {
+        return false;
+    }
+
     return true;
 }
